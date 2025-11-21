@@ -31,7 +31,7 @@ class VehicleState:
     def __init__(self):
         self.x = 0.0
         self.z = 0.0
-        self.angle = 0.0  # Direção do veículo
+        self.angle = 180.0  # Direção do veículo
         self.speed = 0.0
         self.wheel_rotation = 0.0  # Rotação das rodas
         self.steering_angle = 0.0  # Ângulo do volante (max ±30 graus)
@@ -64,6 +64,7 @@ garage = GarageState()
 
 # Controlo de teclado
 keys_pressed = set()
+special_keys_pressed = set() # Serve para as setas
 
 # ========== MATERIAIS ==========
 class Material:
@@ -143,6 +144,20 @@ class Material:
         'diffuse': [0.6, 0.6, 0.6, 1.0],
         'specular': [0.1, 0.1, 0.1, 1.0],
         'shininess': [5.0]
+    }
+    
+    WOOD = {
+        "ambient":  (0.25, 0.17, 0.07, 1.0),
+        "diffuse":  (0.40, 0.26, 0.13, 1.0),
+        "specular": (0.10, 0.08, 0.04, 1.0),
+        "shininess": 10.0
+    }
+
+    LEAVES = {
+        "ambient":  (0.05, 0.20, 0.05, 1.0),
+        "diffuse":  (0.12, 0.45, 0.12, 1.0),
+        "specular": (0.01, 0.03, 0.01, 1.0),
+        "shininess": 5.0
     }
     
     @staticmethod
@@ -603,6 +618,22 @@ def draw_floor():
     
     glEnd()
     glDisable(GL_TEXTURE_2D)
+def draw_tree(x, y, z):
+    # tronco
+    Material.apply(Material.WOOD)
+    glPushMatrix()
+    glTranslatef(x, y, z)
+    glScalef(0.2, 1.0, 0.2)
+    glutSolidCube(1.0)
+    glPopMatrix()
+
+    # folhas
+    Material.apply(Material.LEAVES)
+    glPushMatrix()
+    glTranslatef(x, y + 1.0, z)
+    glutSolidSphere(0.6, 24, 24)
+    glPopMatrix()
+
 
 def draw_scene():
     """Desenha toda a cena"""
@@ -645,15 +676,28 @@ def draw_scene():
                   vehicle.x, 1.0, vehicle.z,
                   0, 1, 0)
     else:
-        # Câmara livre (controlada pelo utilizador)
-        glRotatef(camera.pitch, 1, 0, 0)
-        glRotatef(camera.yaw, 0, 1, 0)
-        glTranslatef(-camera.x, -camera.y, -camera.z)
-    
+        rad_yaw = math.radians(camera.yaw)
+        rad_pitch = math.radians(camera.pitch)
+
+        dir_x = math.cos(rad_pitch) * math.sin(rad_yaw)
+        dir_y = math.sin(rad_pitch)
+        dir_z = -math.cos(rad_pitch) * math.cos(rad_yaw)
+
+        look_x = camera.x + dir_x
+        look_y = camera.y + dir_y
+        look_z = camera.z + dir_z
+
+        gluLookAt(
+            camera.x, camera.y, camera.z,
+            look_x, look_y, look_z,
+            0, 1, 0
+        )
     # Desenhar elementos da cena
     draw_floor()
     draw_garage()
     draw_vehicle()
+    draw_tree(4,0.5,-7)
+    draw_tree(-4,0.5,-7)
     
     glutSwapBuffers()
 
@@ -667,6 +711,38 @@ def animate_value(current, target, speed, dt):
     if abs(delta) <= step:
         return target
     return current + math.copysign(step, delta)
+    
+def update_camera_movement():
+    """Serve apenas para a câmara livre"""
+    if camera.follow_vehicle or camera.inside_vehicle:
+        return
+
+    move_speed = 0.1
+    rad = math.radians(camera.yaw)
+
+    #Moviemento Horizontal
+    if GLUT_KEY_UP in special_keys_pressed:
+        camera.x += math.sin(rad) * move_speed
+        camera.z -= math.cos(rad) * move_speed
+
+    if GLUT_KEY_DOWN in special_keys_pressed:
+        camera.x -= math.sin(rad) * move_speed
+        camera.z += math.cos(rad) * move_speed
+
+    if GLUT_KEY_LEFT in special_keys_pressed:
+        camera.x -= math.cos(rad) * move_speed
+        camera.z -= math.sin(rad) * move_speed
+
+    if GLUT_KEY_RIGHT in special_keys_pressed:
+        camera.x += math.cos(rad) * move_speed
+        camera.z += math.sin(rad) * move_speed
+    
+    #Movimento Vertical
+    if 'R' in keys_pressed:
+        camera.y += move_speed  # sobe
+    if 'F' in keys_pressed:
+        camera.y -= move_speed  # desce
+
 
 def update_vehicle(dt):
     """Atualiza a posição e estado do veículo"""
@@ -749,6 +825,8 @@ def animate(timer_value):
     dt = 0.016  # ~60 FPS
     
     update_vehicle(dt)
+    update_camera_movement()
+
     
     glutPostRedisplay()
     glutTimerFunc(16, animate, 0)
@@ -765,6 +843,13 @@ def keyboard_down(key, x, y):
             sys.exit(0)
     
     keys_pressed.add(key)
+    
+    # R e F para subir e descer a câmara livre
+    if key == 'r' or key == 'R':
+        keys_pressed.add('R')
+    if key == 'f' or key == 'F':
+        keys_pressed.add('F')
+
     
     # Controlo de portas
     if key == 'e' or key == 'E':
@@ -792,50 +877,43 @@ def keyboard_up(key, x, y):
     key = key.decode('utf-8') if isinstance(key, bytes) else key
     keys_pressed.discard(key)
 
+    if key == 'r' or key == 'R':
+        keys_pressed.discard('R')
+    if key == 'f' or key == 'F':
+        keys_pressed.discard('F')
+
 def special_keys(key, x, y):
-    """Callback para teclas especiais (setas)"""
-    # Controlo da câmara livre
-    if not camera.follow_vehicle and not camera.inside_vehicle:
-        if key == GLUT_KEY_UP:
-            camera.pitch -= 5
-        elif key == GLUT_KEY_DOWN:
-            camera.pitch += 5
-        elif key == GLUT_KEY_LEFT:
-            camera.yaw -= 5
-        elif key == GLUT_KEY_RIGHT:
-            camera.yaw += 5
+    """Controlo da câmara livre (setas movem a câmara)"""
+    if camera.follow_vehicle or camera.inside_vehicle:
+        return
+
+    special_keys_pressed.add(key)
     
-    # Limitar pitch
-    if camera.pitch > 90:
-        camera.pitch = 90
-    if camera.pitch < -90:
-        camera.pitch = -90
-    
-    glutPostRedisplay()
+def special_keys_up(key, x, y):
+    if key in special_keys_pressed:
+        special_keys_pressed.discard(key)
 
 def mouse_motion(x, y):
-    """Callback para movimento do rato (controlo da câmara)"""
-    if not camera.follow_vehicle and not camera.inside_vehicle:
-        # Sensibilidade ajustável
-        sensitivity = 0.5
-        center_x = WINDOW_WIDTH // 2
-        center_y = WINDOW_HEIGHT // 2
-        
-        dx = (x - center_x) * sensitivity
-        dy = (y - center_y) * sensitivity
-        
-        camera.yaw += dx
-        camera.pitch -= dy
-        
-        # Limitar pitch
-        if camera.pitch > 90:
-            camera.pitch = 90
-        if camera.pitch < -90:
-            camera.pitch = -90
-        
-        # Resetar posição do rato para o centro (opcional)
-        # glutWarpPointer(center_x, center_y)
-    
+    if camera.follow_vehicle or camera.inside_vehicle:
+        return
+
+    sensitivity = 0.15
+
+    center_x = WINDOW_WIDTH // 2
+    center_y = WINDOW_HEIGHT // 2
+
+    dx = x - center_x
+    dy = y - center_y
+
+    camera.yaw += dx * sensitivity
+    camera.pitch -= dy * sensitivity
+
+    camera.pitch = max(-89, min(89, camera.pitch))
+
+    # Isto faz a câmara funcionar com trackpads
+    if abs(dx) > 2 or abs(dy) > 2:
+        glutWarpPointer(center_x, center_y)
+
     glutPostRedisplay()
 
 # ========== INICIALIZAÇÃO E LOOP PRINCIPAL ==========
@@ -882,8 +960,11 @@ def print_instructions():
     print("\nCÂMARA:")
     print("  C            - Alternar modo seguir veículo")
     print("  V            - Alternar câmara interior do veículo")
-    print("  Setas        - Rotar câmara livre")
-    print("  Rato         - Controlar câmara livre")
+    print("  Rato        - Rodar câmara livre")
+    print("  Setas         - Controlar câmara livre")
+    print("  R        - Sobe a câmara livre")
+    print("  F        - Desce a câmara livre")
+    print("\nGARAGEM:")
     print("\nGARAGEM:")
     print("  G            - Abrir/fechar porta da garagem")
     print("\nGERAL:")
@@ -897,6 +978,9 @@ def main():
     glutInitWindowSize(WINDOW_WIDTH, WINDOW_HEIGHT)
     glutInitWindowPosition(100, 100)
     glutCreateWindow(WINDOW_TITLE.encode('utf-8'))
+    glutSetCursor(GLUT_CURSOR_NONE)                      
+    glutWarpPointer(WINDOW_WIDTH//2, WINDOW_HEIGHT//2)   
+    glutIgnoreKeyRepeat(1) 
     
     init_gl()
     
@@ -908,7 +992,11 @@ def main():
     glutKeyboardFunc(keyboard_down)
     glutKeyboardUpFunc(keyboard_up)
     glutSpecialFunc(special_keys)
+    glutSpecialUpFunc(special_keys_up)
     glutTimerFunc(16, animate, 0)
+    glutPassiveMotionFunc(mouse_motion)
+    glutMotionFunc(mouse_motion)
+    
     
     # Iniciar loop principal
     glutMainLoop()
