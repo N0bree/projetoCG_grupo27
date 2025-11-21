@@ -708,9 +708,24 @@ def update_vehicle(dt):
     # Mover veículo
     if abs(vehicle.speed) > 0.1:
         rad_angle = math.radians(vehicle.angle)
-        vehicle.x += math.sin(rad_angle) * vehicle.speed * dt
-        vehicle.z += math.cos(rad_angle) * vehicle.speed * dt
         
+        new_x = vehicle.x + math.sin(rad_angle) * vehicle.speed * dt
+        new_z = vehicle.z + math.cos(rad_angle) * vehicle.speed * dt
+
+        gate_half_width = 1.7      # adjust to match your gate mesh
+        gate_z = -8.8
+        gate_depth = 1.8
+
+        if garage.door_open < 0.95:
+            within_gate_width = abs(new_x) < gate_half_width
+            crossing_gate_plane = gate_z - gate_depth <= new_z <= gate_z + gate_depth
+            if within_gate_width and crossing_gate_plane and vehicle.speed > 0:
+                new_z = gate_z + gate_depth
+                vehicle.speed = 0.0
+
+        vehicle.x = new_x
+        vehicle.z = new_z
+
         # Rotação das rodas proporcional à velocidade
         wheel_radius_front = 0.22
         wheel_radius_rear = 0.28
@@ -743,8 +758,11 @@ def keyboard_down(key, x, y):
     """Callback quando uma tecla é pressionada"""
     key = key.decode('utf-8') if isinstance(key, bytes) else key
     
-    if key == '\x1b':  # ESC
-        sys.exit()
+    if key == '\x1b':       # ESC
+        try:
+            glutLeaveMainLoop()
+        except Exception:
+            sys.exit(0)
     
     keys_pressed.add(key)
     
