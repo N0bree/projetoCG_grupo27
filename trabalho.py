@@ -20,6 +20,7 @@ import numpy as np
 from OpenGL.GL import *
 from OpenGL.GLUT import *
 from OpenGL.GLU import *
+from OpenGL import GLUT
 
 # ========== CONFIGURAÇÕES GLOBAIS ==========
 WINDOW_WIDTH = 1200
@@ -698,6 +699,7 @@ def draw_scene():
     draw_vehicle()
     draw_tree(4,0.5,-7)
     draw_tree(-4,0.5,-7)
+    draw_hud()
     
     glutSwapBuffers()
 
@@ -791,12 +793,36 @@ def update_vehicle(dt):
         gate_half_width = 1.7      # adjust to match your gate mesh
         gate_z = -8.8
         gate_depth = 1.8
+        bumper_offset = 1.5  # distância do centro ao para-choques
 
-        if garage.door_open < 0.95:
-            within_gate_width = abs(new_x) < gate_half_width
-            crossing_gate_plane = gate_z - gate_depth <= new_z <= gate_z + gate_depth
-            if within_gate_width and crossing_gate_plane and vehicle.speed > 0:
-                new_z = gate_z + gate_depth
+        if garage.door_open < 0.95 and abs(vehicle.speed) > 1e-3:
+            forward_x = math.sin(rad_angle)
+            forward_z = math.cos(rad_angle)
+
+            lead_offset = bumper_offset if vehicle.speed > 0 else -bumper_offset
+            old_lead_x = vehicle.x + forward_x * lead_offset
+            old_lead_z = vehicle.z + forward_z * lead_offset
+            new_lead_x = new_x + forward_x * lead_offset
+            new_lead_z = new_z + forward_z * lead_offset
+
+            door_front_z = gate_z + gate_depth   # face exterior do portão
+            door_back_z = gate_z - gate_depth    # face interior
+
+            collisions = []
+            within_gate_width = abs(new_lead_x) < gate_half_width
+
+            if within_gate_width:
+                if old_lead_z > door_front_z and new_lead_z <= door_front_z:
+                    collisions.append(door_front_z)
+                if old_lead_z < door_back_z and new_lead_z >= door_back_z:
+                    collisions.append(door_back_z)
+                if door_back_z <= new_lead_z <= door_front_z:
+                    target_plane = door_front_z if new_lead_z < old_lead_z else door_back_z
+                    collisions.append(target_plane)
+
+            if collisions:
+                plane_z = min(collisions, key=lambda plane: abs(old_lead_z - plane))
+                new_z = plane_z - forward_z * lead_offset
                 vehicle.speed = 0.0
 
         vehicle.x = new_x
@@ -970,6 +996,56 @@ def print_instructions():
     print("\nGERAL:")
     print("  ESC          - Sair")
     print("="*60 + "\n")
+
+HUD_LINES = [
+    "W/S  - Acelerar / desacelerar",
+    "A/D  - Virar volante",
+    "Q/E  - Portas do carro",
+    "",
+    "Setas - Mover camara",
+    "R/F  - Subir / descer camera",
+    "Rato - Rodar câmara livre",
+    "",
+    "C    - Seguir veiculo",
+    "V    - Câmara interior",
+    "",
+    "G    - Abrir/fechar portao",
+    "",
+    "ESC  - Sair"
+]
+
+def draw_hud():
+    """Desenha texto de ajuda no canto superior direito"""
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    gluOrtho2D(0, WINDOW_WIDTH, 0, WINDOW_HEIGHT)
+
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+
+    glDisable(GL_LIGHTING)
+    glDisable(GL_DEPTH_TEST)
+
+    glColor3f(1.0, 1.0, 1.0)
+    start_x = WINDOW_WIDTH - 260
+    start_y = WINDOW_HEIGHT - 20
+    line_height = 16
+
+    for idx, line in enumerate(HUD_LINES):
+        y = start_y - idx * line_height
+        glRasterPos2f(start_x, y)
+        for char in line:
+            glutBitmapCharacter(GLUT.GLUT_BITMAP_HELVETICA_12, ord(char))
+
+    glEnable(GL_DEPTH_TEST)
+    glEnable(GL_LIGHTING)
+
+    glPopMatrix()
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
 
 def main():
     """Função principal"""
