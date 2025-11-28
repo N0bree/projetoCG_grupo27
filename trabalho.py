@@ -266,7 +266,7 @@ def draw_vehicle_body():
     length = 3.0     # comprimento
     wall = 0.08      # espessura da chapa
     cockpit_width = 1.2
-    cockpit_length = 1.6
+    #cockpit_length = 1.6
 
     # --- Chão ---
     glPushMatrix()
@@ -546,6 +546,21 @@ def draw_garage():
         glScalef(0.4, 5, 0.4)
         glutSolidCube(1.0)
         glPopMatrix()
+
+    # Frente lateral (fecha as laterais do vão da porta)
+    # Local z=3.2 aqui corresponde ao mundo z=-8.8 (mesmo plano da porta)
+    # Segmentos preenchem entre a borda da porta (±1.75) e as paredes laterais (±3.5)
+    glPushMatrix()
+    glTranslatef(-2.625, 0, 3.2)
+    glScalef(1.75, 5, 0.4)
+    glutSolidCube(1.0)
+    glPopMatrix()
+
+    glPushMatrix()
+    glTranslatef(2.625, 0, 3.2)
+    glScalef(1.75, 5, 0.4)
+    glutSolidCube(1.0)
+    glPopMatrix()
     
     # Teto
     Material.apply(Material.CAR_ACCENT)
@@ -713,6 +728,155 @@ def animate_value(current, target, speed, dt):
     if abs(delta) <= step:
         return target
     return current + math.copysign(step, delta)
+
+def resolve_static_collisions(new_x, new_z, rad_angle):
+    """Evita atravessar paredes da garagem e árvores.
+    Usa AABB para paredes e cilindro para troncos.
+    Mantém contacto suave pelo bumper-leading (usa forward do ângulo atual).
+    """
+    # Direção do veículo
+    forward_x = math.sin(rad_angle)
+    forward_z = math.cos(rad_angle)
+
+    # Dimensão aproximada do carro para contacto (para-choques)
+    bumper_offset = 1.5
+    # Usa o para-choques da frente quando avança e o de trás quando recua
+    lead_offset = bumper_offset if vehicle.speed >= 0 else -bumper_offset
+
+    lead_x = new_x + forward_x * lead_offset
+    lead_z = new_z + forward_z * lead_offset
+
+    # ---------- Garagem ----------
+    # Garagem está centrada em (0, z=-12) com piso de 7.5x6.0 e paredes desenhadas.
+    # Definimos AABBs simples em coordenadas do mundo.
+    garage_center_z = -12.0
+    half_width = 3.5
+    half_depth = 3.0
+    wall_thickness = 0.35
+
+    # Paredes laterais (esquerda e direita)
+    left_wall_min = (-half_width - wall_thickness, garage_center_z - half_depth)
+    left_wall_max = (-half_width + wall_thickness, garage_center_z + half_depth)
+
+    right_wall_min = (half_width - wall_thickness, garage_center_z - half_depth)
+    right_wall_max = (half_width + wall_thickness, garage_center_z + half_depth)
+
+    # Parede traseira
+    back_wall_min = (-half_width, garage_center_z - half_depth - wall_thickness)
+    back_wall_max = (half_width, garage_center_z - half_depth + wall_thickness)
+
+    # Porta (frente). Quando fechada, tratamos como uma "laje" de espessura.
+    door_z = -8.8
+    door_half_thickness = 0.15  # metade da espessura (malha usa 0.3 em Z)
+    door_half_width = 1.75      # metade da largura (malha usa 3.5 em X)
+    door_min = (-door_half_width, door_z - door_half_thickness)
+    door_max = (door_half_width, door_z + door_half_thickness)
+
+    # Segmentos frontais fixos (laterais do vão) — sempre bloqueiam
+    front_half_thickness = 0.20  # corresponde à malha (glScalef .., .., 0.4)
+    front_left_min = (-half_width, door_z - front_half_thickness)
+    front_left_max = (-door_half_width, door_z + front_half_thickness)
+    front_right_min = (door_half_width, door_z - front_half_thickness)
+    front_right_max = (half_width, door_z + front_half_thickness)
+
+    '''def clamp_against_plane(px, pz, plane_normal):
+        # Reposiciona o centro do carro para que o bumper fique encostado ao plano
+        nx, nz, plane_point = plane_normal
+        # Projeta o bumper para o plano: center = plane_point - forward * lead_offset
+        return plane_point[0] - forward_x * lead_offset, plane_point[1] - forward_z * lead_offset'''
+
+    # Teste colisão com AABB
+    def hit_aabb(aabb_min, aabb_max, lx, lz):
+        return (aabb_min[0] <= lx <= aabb_max[0]) and (aabb_min[1] <= lz <= aabb_max[1])
+
+    # Segmentos frontais laterais (sempre ativos)
+    if hit_aabb(front_left_min, front_left_max, lead_x, lead_z):
+        plane_z = (door_z - front_half_thickness
+                   if abs(lead_z - (door_z - front_half_thickness)) < abs(lead_z - (door_z + front_half_thickness))
+                   else door_z + front_half_thickness)
+        return new_x, plane_z - forward_z * lead_offset
+
+    if hit_aabb(front_right_min, front_right_max, lead_x, lead_z):
+        plane_z = (door_z - front_half_thickness
+                   if abs(lead_z - (door_z - front_half_thickness)) < abs(lead_z - (door_z + front_half_thickness))
+                   else door_z + front_half_thickness)
+        return new_x, plane_z - forward_z * lead_offset
+
+    # Porta só bloqueia se fechada
+    if garage.door_open < 0.95 and hit_aabb(door_min, door_max, lead_x, lead_z):
+        # Plano frontal/traseiro da porta (dependendo de onde veio)
+        plane_point = (lead_x, door_max[1]) if lead_z >= door_z else (lead_x, door_min[1])
+        new_x = plane_point[0] - forward_x * lead_offset
+        new_z = plane_point[1] - forward_z * lead_offset
+        return new_x, new_z
+
+    # Paredes laterais
+    if hit_aabb(left_wall_min, left_wall_max, lead_x, lead_z):
+        # Escolhe o plano X mais próximo
+        plane_x = left_wall_min[0] if abs(lead_x - left_wall_min[0]) < abs(lead_x - left_wall_max[0]) else left_wall_max[0]
+        # Encostar ao plano X
+        return plane_x - forward_x * lead_offset, new_z
+
+    if hit_aabb(right_wall_min, right_wall_max, lead_x, lead_z):
+        plane_x = right_wall_min[0] if abs(lead_x - right_wall_min[0]) < abs(lead_x - right_wall_max[0]) else right_wall_max[0]
+        return plane_x - forward_x * lead_offset, new_z
+
+    # Parede traseira (plano Z)
+    if hit_aabb(back_wall_min, back_wall_max, lead_x, lead_z):
+        plane_z = back_wall_min[1] if abs(lead_z - back_wall_min[1]) < abs(lead_z - back_wall_max[1]) else back_wall_max[1]
+        return new_x, plane_z - forward_z * lead_offset
+
+    # ---------- Árvores ----------
+    # Troncos nos mesmos locais de draw_tree: (4,-7) e (-4,-7) ao nível do chão
+    # Usamos dois "círculos" para o carro (bumpers frente e trás) para evitar atravessar de lado ou a recuar.
+    tree_positions = [(4.0, -7.0), (-4.0, -7.0)]
+    trunk_radius = 0.18
+    bumper_radius = 0.60  # ~meia largura do carro (1.5/2 = 0.75), ligeiramente menor para tolerância
+
+    # Centros dos bumpers relativos ao centro do carro
+    front_cx = new_x + forward_x * bumper_offset
+    front_cz = new_z + forward_z * bumper_offset
+    rear_cx  = new_x - forward_x * bumper_offset
+    rear_cz  = new_z - forward_z * bumper_offset
+
+    def resolve_bumper_vs_trunk(cx, cz, tx, tz):
+        nonlocal new_x, new_z
+        dx = cx - tx
+        dz = cz - tz
+        dist2 = dx*dx + dz*dz
+        min_d = trunk_radius + bumper_radius
+        if dist2 < min_d * min_d:
+            dist = math.sqrt(dist2) if dist2 > 1e-8 else 1e-8
+            # Direção de empurrão do tronco para o bumper
+            nx = dx / dist
+            nz = dz / dist
+            # Quantidade para sair da interpenetração
+            push = (min_d - dist)
+            # Empurra o carro inteiro (centro) nessa direção
+            new_x += nx * push
+            new_z += nz * push
+
+    for tx, tz in tree_positions:
+        # Resolve primeiro para o bumper mais próximo do tronco, depois o outro
+        d_front2 = (front_cx - tx)**2 + (front_cz - tz)**2
+        d_rear2  = (rear_cx  - tx)**2 + (rear_cz  - tz)**2
+        if d_front2 <= d_rear2:
+            resolve_bumper_vs_trunk(front_cx, front_cz, tx, tz)
+            # Atualizar centros após possível empurrão
+            front_cx = new_x + forward_x * bumper_offset
+            front_cz = new_z + forward_z * bumper_offset
+            rear_cx  = new_x - forward_x * bumper_offset
+            rear_cz  = new_z - forward_z * bumper_offset
+            resolve_bumper_vs_trunk(rear_cx, rear_cz, tx, tz)
+        else:
+            resolve_bumper_vs_trunk(rear_cx, rear_cz, tx, tz)
+            front_cx = new_x + forward_x * bumper_offset
+            front_cz = new_z + forward_z * bumper_offset
+            rear_cx  = new_x - forward_x * bumper_offset
+            rear_cz  = new_z - forward_z * bumper_offset
+            resolve_bumper_vs_trunk(front_cx, front_cz, tx, tz)
+
+    return new_x, new_z
     
 def update_camera_movement():
     """Serve apenas para a câmara livre"""
@@ -789,41 +953,11 @@ def update_vehicle(dt):
         
         new_x = vehicle.x + math.sin(rad_angle) * vehicle.speed * dt
         new_z = vehicle.z + math.cos(rad_angle) * vehicle.speed * dt
+        # Porta fechada é tratada em resolve_static_collisions com a espessura real da malha
+            # Porta fechada é tratada em resolve_static_collisions com a espessura real da malha
 
-        gate_half_width = 1.7      # adjust to match your gate mesh
-        gate_z = -8.8
-        gate_depth = 1.8
-        bumper_offset = 1.5  # distância do centro ao para-choques
-
-        if garage.door_open < 0.95 and abs(vehicle.speed) > 1e-3:
-            forward_x = math.sin(rad_angle)
-            forward_z = math.cos(rad_angle)
-
-            lead_offset = bumper_offset if vehicle.speed > 0 else -bumper_offset
-            old_lead_x = vehicle.x + forward_x * lead_offset
-            old_lead_z = vehicle.z + forward_z * lead_offset
-            new_lead_x = new_x + forward_x * lead_offset
-            new_lead_z = new_z + forward_z * lead_offset
-
-            door_front_z = gate_z + gate_depth   # face exterior do portão
-            door_back_z = gate_z - gate_depth    # face interior
-
-            collisions = []
-            within_gate_width = abs(new_lead_x) < gate_half_width
-
-            if within_gate_width:
-                if old_lead_z > door_front_z and new_lead_z <= door_front_z:
-                    collisions.append(door_front_z)
-                if old_lead_z < door_back_z and new_lead_z >= door_back_z:
-                    collisions.append(door_back_z)
-                if door_back_z <= new_lead_z <= door_front_z:
-                    target_plane = door_front_z if new_lead_z < old_lead_z else door_back_z
-                    collisions.append(target_plane)
-
-            if collisions:
-                plane_z = min(collisions, key=lambda plane: abs(old_lead_z - plane))
-                new_z = plane_z - forward_z * lead_offset
-                vehicle.speed = 0.0
+        # Resolver colisões com paredes/árvores antes de aplicar posição
+        new_x, new_z = resolve_static_collisions(new_x, new_z, rad_angle)
 
         vehicle.x = new_x
         vehicle.z = new_z
@@ -832,7 +966,7 @@ def update_vehicle(dt):
         wheel_radius_front = 0.22
         wheel_radius_rear = 0.28
         circumference_front = 2 * math.pi * wheel_radius_front
-        circumference_rear = 2 * math.pi * wheel_radius_rear
+        #circumference_rear = 2 * math.pi * wheel_radius_rear
         
         # A rotação é baseada na distância percorrida
         distance = vehicle.speed * dt
@@ -990,7 +1124,6 @@ def print_instructions():
     print("  Setas         - Controlar câmara livre")
     print("  R        - Sobe a câmara livre")
     print("  F        - Desce a câmara livre")
-    print("\nGARAGEM:")
     print("\nGARAGEM:")
     print("  G            - Abrir/fechar porta da garagem")
     print("\nGERAL:")
