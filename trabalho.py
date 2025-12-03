@@ -1113,7 +1113,7 @@ def print_instructions():
     print("CONTROLS - Controles da Aplicação")
     print("="*60)
     print("VEÍCULO:")
-    print("  W/S          - Acelerar/Desacelerar")
+    print("  W/S          - Acelerar/Marcha Atrás")
     print("  A/D          - Virar à esquerda/direita (volante)")
     print("  Q            - Abrir/fechar porta esquerda")
     print("  E            - Abrir/fechar porta direita")
@@ -1131,7 +1131,7 @@ def print_instructions():
     print("="*60 + "\n")
 
 HUD_LINES = [
-    "W/S  - Acelerar / desacelerar",
+    "W/S  - Acelerar / marcha atrás",
     "A/D  - Virar volante",
     "Q/E  - Portas do carro",
     "",
