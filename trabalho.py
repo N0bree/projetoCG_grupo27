@@ -610,8 +610,8 @@ def draw_floor():
     
     # Repetição da textura
     tile_size = 2.0
-    tiles_x = 10
-    tiles_z = 10
+    tiles_x = 20
+    tiles_z = 20
     
     for i in range(-tiles_x, tiles_x):
         for j in range(-tiles_z, tiles_z):
