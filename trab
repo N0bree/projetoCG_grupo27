@@ -22,7 +22,7 @@ from OpenGL.GLUT import *
 from OpenGL.GLU import *
 from OpenGL import GLUT
 
-# ========== SISTEMA DE CENA (GRAFO DE NÓS) ==========
+# SISTEMA DE CENA (GRAFO DE NÓS)
 class Node:
     """Nó do grafo de cena (padrão OO para transformações hierárquicas)"""
     def __init__(self, name, geom=None, transform=None, updater=None, state=None):
@@ -101,7 +101,7 @@ def updater_spin(speed_key="speed", angle_key="theta"):
             node.state[angle_key] %= (2 * math.pi)
     return update_func
 
-# ========== CONFIGURAÇÕES GLOBAIS ==========
+# CONFIGURAÇÕES GLOBAIS
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
 WINDOW_TITLE = "Projeto CG - Veículo e Garagem"
@@ -146,7 +146,7 @@ garage = GarageState()
 keys_pressed = set()
 special_keys_pressed = set() # Serve para as setas
 
-# ========== MATERIAIS ==========
+# MATERIAIS
 class Material:
     """Define materiais com propriedades de iluminação"""
     
@@ -248,7 +248,7 @@ class Material:
         glMaterialfv(GL_FRONT, GL_SPECULAR, material_dict['specular'])
         glMaterialfv(GL_FRONT, GL_SHININESS, material_dict['shininess'])
 
-# ========== ILUMINAÇÃO ==========
+# ILUMINAÇÃO
 def setup_lighting():
     """Configura as fontes de iluminação"""
     glEnable(GL_LIGHTING)
@@ -271,7 +271,7 @@ def setup_lighting():
     glLightf(GL_LIGHT1, GL_LINEAR_ATTENUATION, 0.1)
     glLightf(GL_LIGHT1, GL_QUADRATIC_ATTENUATION, 0.01)
 
-# ========== TEXTURAS ==========
+# TEXTURAS
 def create_checker_texture(size=32):
     """Cria uma textura de xadrez para o chão"""
     texture_data = np.zeros((size, size, 3), dtype=np.uint8)
@@ -298,7 +298,7 @@ def init_textures():
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
 
-# ========== GEOMETRIAS PARA SISTEMA DE CENA ==========
+# GEOMETRIAS PARA SISTEMA DE CENA
 def geo_vehicle():
     """Geometria do veículo (wrapper da função draw_vehicle)"""
     draw_vehicle()
@@ -320,7 +320,7 @@ def geo_tree(x, y, z):
         glPopMatrix()
     return draw_tree_func
 
-# ========== PRIMITIVAS GEOMÉTRICAS ==========
+# PRIMITIVAS GEOMÉTRICAS
 def draw_wheel(radius, width, flip=False):
     """Desenha uma roda completa com pneu e jante
     flip: se True, roda 180° para rodas opostas"""
@@ -862,7 +862,7 @@ def draw_scene():
 
     glutSwapBuffers()
 
-# ========== ATUALIZAÇÃO E ANIMAÇÃO ==========
+# ATUALIZAÇÃO E ANIMAÇÃO
 def animate_value(current, target, speed, dt):
     """Interpola um valor com velocidade constante"""
     if abs(target - current) < 1e-3:
@@ -1142,7 +1142,7 @@ def animate(timer_value):
     glutPostRedisplay()
     glutTimerFunc(16, animate, 0)
 
-# ========== CALLBACKS DE INTERAÇÃO ==========
+# CALLBACKS DE INTERAÇÃO
 def keyboard_down(key, x, y):
     """Callback quando uma tecla é pressionada"""
     key = key.decode('utf-8') if isinstance(key, bytes) else key
@@ -1227,7 +1227,7 @@ def mouse_motion(x, y):
 
     glutPostRedisplay()
 
-# ========== INICIALIZAÇÃO E LOOP PRINCIPAL ==========
+# INICIALIZAÇÃO E LOOP PRINCIPAL
 def init_gl():
     """Inicializa o OpenGL"""
     glClearColor(0.5, 0.7, 0.9, 1.0)  # Cor do céu
